@@ -180,6 +180,15 @@ npx wrangler dev &                  # Worker relay on :8787 …
 BOLTHOLE_RELAY=http://127.0.0.1:8787 npm --prefix js test   # … same suite against it
 ```
 
+## Credits
+
+Bolthole grew out of ideas first explored in
+[alma-relay](https://github.com/yetone/alma-relay): an outbound-only agent
+connection, a relay that forwards ciphertext it cannot read, and a Cloudflare
+Workers deployment that costs nothing while idle. Thanks to its author and
+contributors. Bolthole takes the same approach and generalizes it into a
+protocol and SDK for any service, not one app's remote access.
+
 ## License
 
 MIT
