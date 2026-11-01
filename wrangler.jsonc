@@ -1,0 +1,16 @@
+// Deploy the relay to Cloudflare Workers (free plan works):
+//   npx wrangler deploy
+// Optional secrets: npx wrangler secret put BOLTHOLE_KEYS  (or BOLTHOLE_JWT_SECRET)
+{
+  "name": "bolthole-relay",
+  "main": "cloudflare/worker.js",
+  "compatibility_date": "2025-09-01",
+  "durable_objects": {
+    "bindings": [{ "name": "AGENTS", "class_name": "AgentRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AgentRoom"] }],
+  "vars": {
+    // "LOCATION_HINT": "apac"
+  }
+  // "routes": [{ "pattern": "relay.example.com", "custom_domain": true }]
+}

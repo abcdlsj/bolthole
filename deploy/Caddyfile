@@ -1,0 +1,6 @@
+{$RELAY_DOMAIN} {
+	reverse_proxy relay:8787 {
+		flush_interval -1
+		header_up X-Forwarded-For {remote_host}
+	}
+}

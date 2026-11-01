@@ -1,0 +1,20 @@
+services:
+  relay:
+    build: ..
+    restart: unless-stopped
+    environment:
+      BOLTHOLE_TRUST_PROXY: "1"
+      BOLTHOLE_KEYS: ${BOLTHOLE_KEYS:-}
+      BOLTHOLE_JWT_SECRET: ${BOLTHOLE_JWT_SECRET:-}
+    read_only: true
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?set RELAY_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+volumes:
+  caddy-data:

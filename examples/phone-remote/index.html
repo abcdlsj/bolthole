@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Laptop remote</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --ink:#e8eaf0; --dim:#8a90a2; --accent:#7cc4ff; --ok:#6ee7a8; --warn:#fbbf24; }
+  @media (prefers-color-scheme: light) { :root { --bg:#f5f6f8; --card:#fff; --ink:#15171c; --dim:#626877; --accent:#0a66c2; --ok:#0f8a4f; --warn:#b45309; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.45 system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--ink); padding:16px; }
+  main { max-width:520px; margin:0 auto; display:grid; gap:12px; }
+  h1 { font-size:20px; margin:4px 0 0; }
+  .card { background:var(--card); border-radius:14px; padding:16px; }
+  .row { display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; }
+  .label { color:var(--dim); }
+  .big { font-size:28px; font-variant-numeric:tabular-nums; }
+  .bar { height:8px; border-radius:4px; background:color-mix(in srgb, var(--dim) 25%, transparent); overflow:hidden; }
+  .bar > i { display:block; height:100%; background:var(--accent); width:0; transition:width .4s; }
+  .status { font-size:14px; color:var(--dim); }
+  .status b { color:var(--ok); font-weight:600; }
+  form { display:flex; gap:8px; }
+  input { flex:1; min-width:0; font:inherit; padding:10px 12px; border-radius:10px; border:1px solid color-mix(in srgb, var(--dim) 40%, transparent); background:transparent; color:inherit; }
+  button { font:inherit; font-weight:600; padding:10px 14px; border:0; border-radius:10px; background:var(--accent); color:#fff; }
+  .err { color:var(--warn); }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="host">Connecting…</h1>
+  <p class="status" id="status">Opening an end-to-end encrypted session.</p>
+  <section class="card">
+    <div class="row"><span class="label">CPU load</span><span class="big" id="load">–</span></div>
+    <div class="bar"><i id="loadbar"></i></div>
+    <div class="row"><span class="label">Memory used</span><span class="big" id="mem">–</span></div>
+    <div class="bar"><i id="membar"></i></div>
+    <div class="row"><span class="label">Uptime</span><span id="uptime">–</span></div>
+    <div class="row"><span class="label">Round trip</span><span id="rtt">–</span></div>
+  </section>
+  <section class="card">
+    <form id="notify">
+      <input id="text" placeholder="Say something on the laptop" maxlength="200" autocomplete="off">
+      <button>Send</button>
+    </form>
+  </section>
+</main>
+<script type="module">
+  import { Client } from './sdk/index.js';
+  const $ = (id) => document.getElementById(id);
+  const code = new URLSearchParams(location.hash.slice(1)).get('k');
+  // This page lives at <relay>/c/<token>/, so the relay base is everything before /c/.
+  const relayBase = location.origin + location.pathname.slice(0, location.pathname.indexOf('/c/'));
+  if (!code) {
+    $('status').innerHTML = '<span class="err">This link is missing its #k=… code.</span>';
+    throw new Error('no code');
+  }
+  const client = new Client(`${relayBase}/#k=${code}`, { name: navigator.userAgent.slice(0, 60), onPath: (p) => ($('status').innerHTML = `Encrypted session via <b>${p}</b>`) });
+
+  const fmtUptime = (s) => `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+
+  async function watch() {
+    for (;;) {
+      try {
+        const res = await client.fetch('/stats');
+        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buf = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += value;
+          let i;
+          while ((i = buf.indexOf('\n\n')) >= 0) {
+            const line = buf.slice(0, i);
+            buf = buf.slice(i + 2);
+            if (!line.startsWith('data: ')) continue;
+            const s = JSON.parse(line.slice(6));
+            $('host').textContent = s.host;
+            $('load').textContent = `${Math.round(s.load * 100)}%`;
+            $('loadbar').style.width = `${Math.min(100, s.load * 100)}%`;
+            $('mem').textContent = `${Math.round(s.memUsed * 100)}%`;
+            $('membar').style.width = `${s.memUsed * 100}%`;
+            $('uptime').textContent = fmtUptime(s.uptime);
+          }
+        }
+      } catch (e) {
+        $('status').innerHTML = `<span class="err">${e.message}. Retrying…</span>`;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    }
+  }
+
+  async function ping() {
+    const t = performance.now();
+    try {
+      await (await client.fetch('/ping')).json();
+      $('rtt').textContent = `${Math.round(performance.now() - t)} ms`;
+    } catch {}
+  }
+
+  $('notify').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = $('text').value.trim();
+    if (!text) return;
+    await client.fetch('/notify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+    $('text').value = '';
+  });
+
+  watch();
+  ping();
+  setInterval(ping, 3000);
+</script>
+</body>
+</html>

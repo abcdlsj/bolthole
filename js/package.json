@@ -1,0 +1,19 @@
+{
+  "name": "bolthole",
+  "version": "0.1.0",
+  "description": "Reach any service from anywhere through a relay that can't read your traffic. Browser, Node, Deno, Bun and Workers.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.js",
+    "./relay": "./src/relay.js"
+  },
+  "files": ["src"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "ws": "^8.18.0"
+  }
+}

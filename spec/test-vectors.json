@@ -1,0 +1,49 @@
+{
+  "code": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "routing_token": "1NoPHkAh6XsN7mykOQ_29DN9g5O37qOl",
+  "token_hash": "2b50afad8ac21eced80ae3ff0364ac8c9d70cca0fe1b92e33b89fb9d59199cb3",
+  "psk": "1a08addfe0d08c05813c689af34c9eca6208fc3fdfe2711e80f23f1125279044",
+  "conn_string": "https://relay.example.com/#k=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "handshake": {
+    "client_ephemeral_private": "1111111111111111111111111111111111111111111111111111111111111111",
+    "agent_ephemeral_private": "2222222222222222222222222222222222222222222222222222222222222222",
+    "client_hello": "{\"protos\":[\"mux/1\"],\"name\":\"vector-client\"}",
+    "agent_hello": "{\"proto\":\"mux/1\",\"name\":\"vector-agent\"}",
+    "msg1": "7b4e909bbe7ffe44c465a220037d608ee35897d31ef972f07f74892cb0f73f13b8eda237a706448d3f27790e5ed8c1cf301c4288f2195a36ba1d34580b4d2de692210b5c2a1b46f131e52b986c6d1a810f48eb0a9e4a6d1602e001",
+    "msg2": "0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f205e34ad040855a687e34d6a42d6140ecf302b8e2f0540eb398d6bd72fa82bf79b7790833ac86b3d085ec3b4d6920ff83bacf59dbb18b230",
+    "client_record_0": "d0fd5050d931774edf49c7ca3fe29f74530c3e32",
+    "agent_record_0": "a73f77ff77e6883fb01ebf6623cf2880e84e5480"
+  },
+  "frames": [
+    {
+      "hex": "01000000017b226b696e64223a2268747470222c226d657461223a7b226d6574686f64223a22474554222c2270617468223a222f227d7d",
+      "type": 1,
+      "stream_id": 1,
+      "payload_hex": "7b226b696e64223a2268747470222c226d657461223a7b226d6574686f64223a22474554222c2270617468223a222f227d7d"
+    },
+    {
+      "hex": "030000000168656c6c6f",
+      "type": 3,
+      "stream_id": 1,
+      "payload_hex": "68656c6c6f"
+    },
+    {
+      "hex": "060000000200020000",
+      "type": 6,
+      "stream_id": 2,
+      "payload_hex": "00020000"
+    },
+    {
+      "hex": "0400000003",
+      "type": 4,
+      "stream_id": 3,
+      "payload_hex": ""
+    },
+    {
+      "hex": "07000000000102030405060708",
+      "type": 7,
+      "stream_id": 0,
+      "payload_hex": "0102030405060708"
+    }
+  ]
+}
