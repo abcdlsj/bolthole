@@ -12,7 +12,7 @@ port forwarding, no VPN and no trust in whoever runs the relay.
                    └──── or directly, when they share a network ──────────┘
 ```
 
-- **Any app, any language.** Use the Go or JavaScript SDK, or put the
+- **Any app, any language.** Use the Go, JavaScript or Swift SDK, or put the
   `bolthole` binary next to your app and keep speaking plain HTTP,
   WebSocket or TCP on localhost.
 - **No server needed.** Deploy the relay to Cloudflare Workers on the free
@@ -97,6 +97,18 @@ console.log(agent.connString);
 
 No build step and no dependencies: the SDK is plain ES modules on WebCrypto.
 
+### Swift (iOS, macOS, Linux)
+
+```swift
+import Bolthole
+
+let client = try BoltholeClient("https://relay.example.com/#k=6Xo2…")
+let res = try await client.request("GET", "/api/status")
+let ws = try await client.webSocket("/live")
+```
+
+See [swift/README.md](swift/README.md).
+
 ### Any other language
 
 Run `bolthole agent` beside your server and `bolthole connect` beside your
@@ -168,6 +180,7 @@ Read [spec/PROTOCOL.md](spec/PROTOCOL.md) for the details.
 | `agent/`, `client/`, `relay/` | Go: the three roles |
 | `cmd/bolthole/` | The CLI: relay server and sidecar |
 | `js/` | JavaScript SDK (client, agent, relay core) |
+| `swift/` | Swift SDK (client) |
 | `cloudflare/` | Workers edition of the relay |
 | `examples/` | Runnable examples |
 
@@ -178,6 +191,7 @@ go test -race ./...                 # Go unit + integration tests
 cd js && npm install && npm test    # JS tests, including Go⇄JS interop
 npx wrangler dev &                  # Worker relay on :8787 …
 BOLTHOLE_RELAY=http://127.0.0.1:8787 npm --prefix js test   # … same suite against it
+cd swift && swift test              # Swift vectors and mux tests
 ```
 
 ## Credits

@@ -25,3 +25,10 @@ jobs:
           npx --yes wrangler@4 dev --port 8799 --ip 127.0.0.1 > wrangler.log 2>&1 &
           for i in $(seq 1 60); do curl -fs http://127.0.0.1:8799/healthz && break; sleep 1; done
           BOLTHOLE_RELAY=http://127.0.0.1:8799 node --test js/test/interop.test.js
+  swift:
+    runs-on: ubuntu-latest
+    container: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+        working-directory: swift

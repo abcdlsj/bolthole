@@ -3,3 +3,9 @@
 node_modules/
 .wrangler/
 *.code
+swift/.build/
+swift/.swiftpm/
+swift/Package.resolved
+.build/
+.swiftpm/
+Package.resolved
