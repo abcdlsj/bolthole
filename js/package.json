@@ -4,6 +4,24 @@
   "description": "Reach any service from anywhere through a relay that can't read your traffic. Browser, Node, Deno, Bun and Workers.",
   "type": "module",
   "license": "MIT",
+  "author": "abcdlsj",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abcdlsj/bolthole.git",
+    "directory": "js"
+  },
+  "homepage": "https://github.com/abcdlsj/bolthole/tree/main/js#readme",
+  "bugs": "https://github.com/abcdlsj/bolthole/issues",
+  "keywords": [
+    "relay",
+    "tunnel",
+    "reverse-proxy",
+    "end-to-end-encryption",
+    "noise-protocol",
+    "websocket",
+    "cloudflare-workers",
+    "nat-traversal"
+  ],
   "exports": {
     ".": "./src/index.js",
     "./relay": "./src/relay.js"
