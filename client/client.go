@@ -323,7 +323,8 @@ func (c *Client) dialOne(ctx context.Context, cand candidate) (*Conn, error) {
 }
 
 // ErrAgentOffline is returned when the relay has no agent for this code.
-var ErrAgentOffline = errors.New("client: agent is offline")
+// A wrong code looks the same as an offline agent: the relay only sees hashes.
+var ErrAgentOffline = errors.New("client: agent is offline, or the code is wrong")
 
 func (c *Client) upgradeLoop(ctx context.Context) {
 	t := time.NewTicker(c.opts.UpgradeInterval)
