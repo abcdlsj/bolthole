@@ -182,12 +182,15 @@ BOLTHOLE_RELAY=http://127.0.0.1:8787 npm --prefix js test   # … same suite aga
 
 ## Credits
 
-Bolthole grew out of ideas first explored in
-[alma-relay](https://github.com/yetone/alma-relay): an outbound-only agent
-connection, a relay that forwards ciphertext it cannot read, and a Cloudflare
-Workers deployment that costs nothing while idle. Thanks to its author and
-contributors. Bolthole takes the same approach and generalizes it into a
-protocol and SDK for any service, not one app's remote access.
+<img src="https://alma.now/assets/alma.png" width="44" height="44" alt="Alma" align="left" hspace="12">
+
+Bolthole's approach came from [alma-relay](https://github.com/yetone/alma-relay),
+the self-hosted relay for [Alma](https://alma.now) Remote Access: an
+outbound-only agent connection, a relay that only sees ciphertext, and a
+Cloudflare Workers deployment that costs nothing while idle. Thanks to
+[@yetone](https://github.com/yetone) and its contributors.
+
+<br clear="left">
 
 ## License
 

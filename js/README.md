@@ -133,10 +133,15 @@ before it runs — for real deployments, host the client page yourself.
 
 ## Credits
 
-The approach came from [alma-relay](https://github.com/yetone/alma-relay):
-an outbound-only agent connection, a relay blind to its traffic, and a Workers
-deployment that costs nothing while idle. Bolthole generalizes it into a
-protocol and SDK for any service.
+<img src="https://alma.now/assets/alma.png" width="44" height="44" alt="Alma" align="left" hspace="12">
+
+The approach came from [alma-relay](https://github.com/yetone/alma-relay), the
+self-hosted relay for [Alma](https://alma.now) Remote Access: an outbound-only
+agent connection, a relay that only sees ciphertext, and a Cloudflare Workers
+deployment that costs nothing while idle. Thanks to
+[@yetone](https://github.com/yetone) and its contributors.
+
+<br clear="left">
 
 ## License
 
