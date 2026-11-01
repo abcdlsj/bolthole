@@ -43,7 +43,7 @@ type Vectors struct {
 const vectorsPath = "../spec/test-vectors.json"
 
 func fixedKey(seed byte) noise.DHKey {
-	// Built by hand: crypto/ecdh ignores custom randomness since Go 1.26.
+	// Built by hand: recent Go versions ignore custom randomness in crypto/ecdh.
 	priv, err := ecdh.X25519().NewPrivateKey(bytes.Repeat([]byte{seed}, 32))
 	if err != nil {
 		panic(err)
