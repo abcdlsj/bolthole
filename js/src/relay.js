@@ -7,8 +7,9 @@
 import { Session, ResetError } from './mux.js';
 import { WsStream, encodeHeaders, decodeHeaders } from './kinds.js';
 import { enc, dec, unb64url, deferred } from './bytes.js';
+import { VERSION } from './version.js';
 
-export const VERSION = '0.1.0';
+export { VERSION };
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
 const HASH_RE = /^[0-9a-f]{64}$/;
 

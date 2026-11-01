@@ -6,6 +6,7 @@ import { agentHandshake, PROTO_MUX, MAX_RECORD } from './noise.js';
 import { Session } from './mux.js';
 import { wsConn, serveHttp, WsStream } from './kinds.js';
 import { enc, dec } from './bytes.js';
+import { VERSION } from './version.js';
 
 const E2E_PATH = '/.bolthole/e2e';
 
@@ -87,7 +88,7 @@ export class Agent {
     const { tokenHash } = await this.keys;
     const base = this.opts.relay.replace(/^http/, 'ws').replace(/\/+$/, '');
     const conn = await wsConn(new this.WS(`${base}/v1/agent?th=${tokenHash}`, ['relay.v1']));
-    await conn.write(JSON.stringify({ type: 'hello', v: 1, token_hash: tokenHash, name: this.opts.name, auth: this.opts.auth, version: '0.1.0', caps: ['mux/1'] }));
+    await conn.write(JSON.stringify({ type: 'hello', v: 1, token_hash: tokenHash, name: this.opts.name, auth: this.opts.auth, version: VERSION, caps: ['mux/1'] }));
     let w;
     try {
       w = JSON.parse(dec.decode(await conn.read()));
