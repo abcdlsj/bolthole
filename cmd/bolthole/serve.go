@@ -56,8 +56,12 @@ func cmdServe(ctx context.Context, args []string) error {
 	log.Info("draining: agents are told to reconnect")
 	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	// Close the listener first so a replacement relay can bind the port
+	// immediately; hijacked agent/client streams keep draining below.
+	hsErr := make(chan error, 1)
+	go func() { hsErr <- hs.Shutdown(sctx) }()
 	_ = srv.Shutdown(sctx)
-	if err := hs.Shutdown(sctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+	if err := <-hsErr; err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
 	return nil
