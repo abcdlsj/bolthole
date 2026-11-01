@@ -1,7 +1,5 @@
 # Bolthole
 
-English | [简体中文](README.zh-CN.md)
-
 **Reach any service from anywhere, through a relay that can't read your traffic.**
 
 Your app runs on a laptop, a Raspberry Pi or a server behind NAT. Bolthole
