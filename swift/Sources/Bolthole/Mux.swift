@@ -29,7 +29,7 @@ public struct Frame: Sendable {
     }
 }
 
-let initialWindow = 256 * 1024
+let initialWindow = 4 * 1024 * 1024
 let maxChunk = 32 * 1024
 
 struct ResetPayload: Codable {

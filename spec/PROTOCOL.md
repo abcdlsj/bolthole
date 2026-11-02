@@ -195,7 +195,7 @@ DATA / FIN         ◀──────────────────▶ 
 
 ### 3.4 Flow control
 
-Each direction of each stream starts with a window of **262144 bytes**. Only
+Each direction of each stream starts with a window of **4194304 bytes** (4 MiB). Only
 `DATA` payload bytes count. A sender must not send more than the current
 window; a receiver that sees an overrun resets the stream with
 `flow_control`. After the application consumes bytes, the receiver returns

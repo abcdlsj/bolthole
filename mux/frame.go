@@ -32,7 +32,7 @@ const (
 	// DefaultMaxFrame is the largest frame accepted by default.
 	DefaultMaxFrame = 1<<20 + HeaderSize
 	// InitialWindow is the per-direction, per-stream starting credit.
-	InitialWindow = 256 * 1024
+	InitialWindow = 4 << 20
 	// MaxChunk is the largest DATA payload this implementation sends.
 	MaxChunk = 32 * 1024
 )

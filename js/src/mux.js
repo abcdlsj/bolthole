@@ -3,7 +3,7 @@
 import { concat, enc, dec, u32, readU32, deferred } from './bytes.js';
 
 export const T = { OPEN: 1, ACCEPT: 2, DATA: 3, FIN: 4, RESET: 5, WINDOW: 6, PING: 7, PONG: 8, GOAWAY: 9 };
-export const INITIAL_WINDOW = 256 * 1024;
+export const INITIAL_WINDOW = 4 * 1024 * 1024;
 export const MAX_CHUNK = 32 * 1024;
 export const DEFAULT_MAX_FRAME = (1 << 20) + 5;
 
