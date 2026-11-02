@@ -24,7 +24,7 @@ import (
 )
 
 // Version is reported to relays in the hello.
-const Version = "0.1.1"
+const Version = "0.2.0"
 
 // Info describes where a stream came from.
 type Info struct {

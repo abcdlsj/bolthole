@@ -28,7 +28,7 @@ import (
 )
 
 // Version is reported by /healthz.
-const Version = "0.1.1"
+const Version = "0.2.0"
 
 // Config tunes a Server. The zero value is a usable open relay.
 type Config struct {
