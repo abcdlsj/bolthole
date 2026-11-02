@@ -30,6 +30,7 @@ public struct Frame: Sendable {
 }
 
 let initialWindow = 4 * 1024 * 1024
+let sessionWindow = 64 * 1024 * 1024
 let maxChunk = 32 * 1024
 
 struct ResetPayload: Codable {
@@ -60,6 +61,12 @@ public actor MuxSession {
     private var lastRecv = Date()
     private var lastSend = Date()
     private var doneWaiters: [CheckedContinuation<Void, Never>] = []
+
+    // Session-level flow control (spec §3.4), shared by all streams.
+    private(set) var sendCredit = sessionWindow
+    private var recvCredit = sessionWindow
+    private var recvUnack = 0
+    private var creditWaiters: [CheckedContinuation<Void, Never>] = []
 
     /// Streams the peer opens.
     public nonisolated let incoming: AsyncStream<MuxStream>
@@ -159,6 +166,40 @@ public actor MuxSession {
         for st in all { Task { await st.terminate(error) } }
         for w in doneWaiters { w.resume() }
         doneWaiters.removeAll()
+        wakeCreditWaiters()
+    }
+
+    private func wakeCreditWaiters() {
+        let w = creditWaiters
+        creditWaiters.removeAll()
+        for c in w { c.resume() }
+    }
+
+    /// Reserves up to n bytes of session credit. With none left it waits for
+    /// a change (more credit, a stream ending, or closure) and returns 0, so
+    /// the caller re-checks its own state.
+    func takeSendCredit(_ n: Int) async throws -> Int {
+        if isClosed { throw closeError ?? BoltholeError.sessionClosed("closed") }
+        if sendCredit > 0 {
+            let got = min(n, sendCredit)
+            sendCredit -= got
+            return got
+        }
+        await withCheckedContinuation { creditWaiters.append($0) }
+        return 0
+    }
+
+    /// Frees n received bytes (consumed or discarded) and returns session
+    /// credit to the peer once half the window is free again.
+    func releaseRecv(_ n: Int) {
+        guard n > 0 else { return }
+        recvUnack += n
+        if recvUnack >= sessionWindow / 2 {
+            let credit = recvUnack
+            recvUnack = 0
+            recvCredit += credit
+            enqueue(Frame(type: FrameType.window.rawValue, streamID: 0, payload: .u32(UInt32(credit))))
+        }
     }
 
     /// Waits until the session ends.
@@ -197,7 +238,10 @@ public actor MuxSession {
         try open(kind: kind, rawMeta: try JSONEncoder().encode(meta))
     }
 
-    func remove(_ id: UInt32) { streams[id] = nil }
+    func remove(_ id: UInt32) {
+        streams[id] = nil
+        wakeCreditWaiters() // a writer of this stream may be waiting for credit
+    }
 
     private func isPeerID(_ id: UInt32) -> Bool { id != 0 && ((id % 2 == 1) != config.dialer) }
 
@@ -226,7 +270,19 @@ public actor MuxSession {
             streams[f.streamID] = st
             incomingCont.yield(st)
         case .accept, .data, .fin, .reset, .window:
+            if type == .window, f.streamID == 0 {
+                guard f.payload.count == 4 else { throw BoltholeError.protocolError("bad session window") }
+                sendCredit += Int(f.payload.readU32(at: 0))
+                guard sendCredit <= 1 << 31 else { throw BoltholeError.protocolError("session window overflow") }
+                wakeCreditWaiters()
+                return
+            }
+            if type == .data {
+                guard f.payload.count <= recvCredit else { throw BoltholeError.protocolError("session window exceeded") }
+                recvCredit -= f.payload.count
+            }
             guard let st = streams[f.streamID] else {
+                if type == .data { releaseRecv(f.payload.count) }
                 if type == .accept || type == .data { enqueue(resetFrame(f.streamID, "unknown_stream")) }
                 return
             }
@@ -258,6 +314,7 @@ public actor MuxStream {
     private var recvFin = false
     private var recvCredit = initialWindow
     private var unacked = 0
+    private var held = 0 // buffered bytes still charged to the session window
     private var sendCredit = initialWindow
     private var localFin = false
     private var isAccepted = false
@@ -317,6 +374,9 @@ public actor MuxStream {
             if !buf.isEmpty {
                 let c = buf.removeFirst()
                 unacked += c.count
+                let release = min(c.count, held)
+                held -= release
+                await session.releaseRecv(release)
                 if unacked >= initialWindow / 2, !recvFin, failure == nil {
                     let credit = unacked
                     unacked = 0
@@ -346,7 +406,9 @@ public actor MuxStream {
             if let failure { throw failure }
             if localFin { throw BoltholeError.streamClosed }
             if sendCredit <= 0 { await waitForChange(); continue }
-            let n = min(data.endIndex - off, maxChunk, sendCredit)
+            let want = min(data.endIndex - off, maxChunk, sendCredit)
+            let n = try await session.takeSendCredit(want)
+            if n == 0 { continue }
             sendCredit -= n
             try await session.send(Frame(type: FrameType.data.rawValue, streamID: id, payload: Data(data[off..<off + n])))
             off += n
@@ -379,6 +441,9 @@ public actor MuxStream {
     func terminate(_ error: Error) async {
         if failure == nil, !finished { failure = error }
         finished = true
+        let h = held
+        held = 0
+        await session.releaseRecv(h)
         wake()
         await session.remove(id)
     }
@@ -400,9 +465,14 @@ public actor MuxStream {
                 wake()
             }
         case .data:
-            if recvFin || failure != nil { return }
-            if payload.count > recvCredit { await reset("flow_control", "window exceeded"); return }
+            if recvFin || failure != nil { await session.releaseRecv(payload.count); return }
+            if payload.count > recvCredit {
+                await session.releaseRecv(payload.count)
+                await reset("flow_control", "window exceeded")
+                return
+            }
             recvCredit -= payload.count
+            held += payload.count
             buf.append(payload)
             wake()
         case .fin:

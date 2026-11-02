@@ -90,6 +90,13 @@ type Session struct {
 	remoteGoAway chan struct{}
 	goAwayOnce   sync.Once
 	goAwayErr    atomic.Pointer[ResetError]
+
+	// Session-level flow control (spec §3.4), shared by all streams.
+	flowMu     sync.Mutex
+	flowSignal chan struct{} // closed and replaced when sendCredit grows
+	sendCredit int64
+	recvCredit int64
+	recvUnack  int64 // released bytes not yet returned as WINDOW
 }
 
 // NewSession starts a session over conn. It owns conn from now on.
@@ -104,6 +111,9 @@ func NewSession(conn Conn, cfg Config) *Session {
 		ctrl:         make(chan Frame, 4096),
 		closed:       make(chan struct{}),
 		remoteGoAway: make(chan struct{}),
+		flowSignal:   make(chan struct{}),
+		sendCredit:   SessionWindow,
+		recvCredit:   SessionWindow,
 	}
 	if cfg.Dialer {
 		s.nextID = 1
@@ -352,10 +362,21 @@ func (s *Session) handle(f Frame) error {
 	case TypeOpen:
 		return s.handleOpen(f)
 	case TypeAccept, TypeData, TypeFin, TypeReset, TypeWindow:
+		if f.Type == TypeWindow && f.StreamID == 0 {
+			return s.handleSessionWindow(f.Payload)
+		}
+		if f.Type == TypeData {
+			if err := s.debitRecv(len(f.Payload)); err != nil {
+				return err
+			}
+		}
 		s.mu.Lock()
 		st := s.streams[f.StreamID]
 		s.mu.Unlock()
 		if st == nil {
+			if f.Type == TypeData {
+				s.releaseRecv(len(f.Payload))
+			}
 			if f.Type != TypeReset && f.Type != TypeWindow && f.Type != TypeFin {
 				s.queueCtrl(resetFrame(f.StreamID, CodeUnknownStream, ""))
 			}
@@ -365,6 +386,69 @@ func (s *Session) handle(f Frame) error {
 		return nil
 	default:
 		return nil // unknown frame types are ignored (spec §3.1)
+	}
+}
+
+// takeSendCredit reserves up to n bytes of session credit. When none is
+// left it returns 0 and a channel that is closed once more arrives.
+func (s *Session) takeSendCredit(n int) (int, <-chan struct{}) {
+	s.flowMu.Lock()
+	defer s.flowMu.Unlock()
+	if s.sendCredit <= 0 {
+		return 0, s.flowSignal
+	}
+	if int64(n) > s.sendCredit {
+		n = int(s.sendCredit)
+	}
+	s.sendCredit -= int64(n)
+	return n, nil
+}
+
+func (s *Session) handleSessionWindow(p []byte) error {
+	if len(p) != 4 {
+		return errors.New("mux: bad session window payload")
+	}
+	s.flowMu.Lock()
+	defer s.flowMu.Unlock()
+	s.sendCredit += int64(binary.BigEndian.Uint32(p))
+	if s.sendCredit > 1<<31 {
+		return errors.New("mux: session window overflow")
+	}
+	close(s.flowSignal)
+	s.flowSignal = make(chan struct{})
+	return nil
+}
+
+// debitRecv charges an incoming DATA payload to the session window.
+func (s *Session) debitRecv(n int) error {
+	s.flowMu.Lock()
+	defer s.flowMu.Unlock()
+	if int64(n) > s.recvCredit {
+		return errors.New("mux: session window exceeded")
+	}
+	s.recvCredit -= int64(n)
+	return nil
+}
+
+// releaseRecv frees n received bytes (consumed or discarded) and returns
+// session credit to the peer once half the window is free again.
+func (s *Session) releaseRecv(n int) {
+	if n <= 0 {
+		return
+	}
+	s.flowMu.Lock()
+	s.recvUnack += int64(n)
+	var credit int64
+	if s.recvUnack >= SessionWindow/2 {
+		credit = s.recvUnack
+		s.recvUnack = 0
+		s.recvCredit += credit
+	}
+	s.flowMu.Unlock()
+	if credit > 0 {
+		var b [4]byte
+		binary.BigEndian.PutUint32(b[:], uint32(credit))
+		s.queueCtrl(Frame{Type: TypeWindow, Payload: b[:]})
 	}
 }
 

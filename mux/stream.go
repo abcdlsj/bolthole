@@ -31,6 +31,7 @@ type Stream struct {
 	recvFin    bool
 	recvCredit int64 // bytes the peer may still send
 	unacked    int64 // consumed bytes not yet returned as WINDOW
+	held       int64 // buffered bytes still charged to the session window
 	sendCredit int64
 	localFin   bool
 	accepted   bool // we sent ACCEPT (inbound) / got ACCEPT (outbound)
@@ -151,6 +152,8 @@ func (st *Stream) Read(p []byte) (int, error) {
 		if st.recv.Len() > 0 {
 			n, _ := st.recv.Read(p)
 			st.unacked += int64(n)
+			release := min(int64(n), st.held)
+			st.held -= release
 			var credit int64
 			if st.unacked >= InitialWindow/2 && !st.recvFin && st.err == nil {
 				credit = st.unacked
@@ -158,6 +161,7 @@ func (st *Stream) Read(p []byte) (int, error) {
 				st.recvCredit += credit
 			}
 			st.mu.Unlock()
+			st.s.releaseRecv(int(release))
 			if credit > 0 {
 				var b [4]byte
 				binary.BigEndian.PutUint32(b[:], uint32(credit))
@@ -220,6 +224,15 @@ func (st *Stream) Write(p []byte) (int, error) {
 		}
 		if int64(n) > st.sendCredit {
 			n = int(st.sendCredit)
+		}
+		n, flow := st.s.takeSendCredit(n)
+		if n == 0 {
+			sig, dl := st.signal, st.writeDeadline
+			st.mu.Unlock()
+			if err := waitSignals(sig, flow, dl); err != nil {
+				return written, err
+			}
+			continue
 		}
 		st.sendCredit -= int64(n)
 		st.mu.Unlock()
@@ -287,8 +300,11 @@ func (st *Stream) terminate(err error) {
 	}
 	alreadyDone := st.finished
 	st.finished = true
+	held := st.held
+	st.held = 0
 	st.broadcast()
 	st.mu.Unlock()
+	st.s.releaseRecv(int(held))
 	if !alreadyDone {
 		close(st.done)
 	}
@@ -323,14 +339,17 @@ func (st *Stream) handleFrame(f Frame) {
 		st.mu.Lock()
 		if st.recvFin || st.err != nil {
 			st.mu.Unlock()
+			st.s.releaseRecv(len(f.Payload))
 			return
 		}
 		if int64(len(f.Payload)) > st.recvCredit {
 			st.mu.Unlock()
+			st.s.releaseRecv(len(f.Payload))
 			st.Reset(CodeFlowControl, "window exceeded")
 			return
 		}
 		st.recvCredit -= int64(len(f.Payload))
+		st.held += int64(len(f.Payload))
 		st.recv.Write(f.Payload)
 		st.broadcast()
 		st.mu.Unlock()
@@ -391,8 +410,16 @@ func (st *Stream) SetWriteDeadline(t time.Time) error {
 }
 
 func waitSignal(sig <-chan struct{}, deadline time.Time) error {
+	return waitSignals(sig, nil, deadline)
+}
+
+// waitSignals waits for either channel (a nil one never fires) or the deadline.
+func waitSignals(a, b <-chan struct{}, deadline time.Time) error {
 	if deadline.IsZero() {
-		<-sig
+		select {
+		case <-a:
+		case <-b:
+		}
 		return nil
 	}
 	d := time.Until(deadline)
@@ -402,7 +429,9 @@ func waitSignal(sig <-chan struct{}, deadline time.Time) error {
 	t := time.NewTimer(d)
 	defer t.Stop()
 	select {
-	case <-sig:
+	case <-a:
+		return nil
+	case <-b:
 		return nil
 	case <-t.C:
 		return os.ErrDeadlineExceeded

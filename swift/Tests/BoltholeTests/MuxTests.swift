@@ -66,6 +66,37 @@ final class MuxTests: XCTestCase {
         XCTAssertEqual(got, data)
     }
 
+    /// Streams the peer doesn't read share one session window; writers resume
+    /// once it reads.
+    func testSessionWindowCapsBufferedData() async throws {
+        let (cli, srv) = sessions()
+        let n = 24 // 24 × 4 MiB per-stream windows = 96 MiB > sessionWindow
+        var outs: [MuxStream] = []
+        for _ in 0..<n { outs.append(try await cli.open(kind: "sink")) }
+        var ins: [MuxStream] = []
+        for await st in srv.incoming {
+            ins.append(st)
+            if ins.count == n { break }
+        }
+        let data = Data(count: initialWindow)
+        let writers = outs.map { st in
+            Task {
+                try await st.write(data)
+                try await st.closeWrite()
+            }
+        }
+        try await Task.sleep(nanoseconds: 500_000_000)
+        let left = await cli.sendCredit
+        XCTAssertEqual(left, 0, "writers should stall once the session window is used up")
+
+        let readers = ins.map { st in Task { try await st.readAll().count } }
+        for w in writers { try await w.value }
+        for r in readers {
+            let count = try await r.value
+            XCTAssertEqual(count, data.count)
+        }
+    }
+
     func testResetPropagates() async throws {
         let (cli, srv) = sessions()
         Task { for await st in srv.incoming { await st.reset("not_found", "nope") } }

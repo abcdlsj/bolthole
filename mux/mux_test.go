@@ -205,3 +205,82 @@ func TestReadDeadline(t *testing.T) {
 		t.Fatal("expected deadline error")
 	}
 }
+
+// Streams the peer doesn't read share one session window: writers stall once
+// SessionWindow bytes are buffered, and resume once the peer reads.
+func TestSessionWindowCapsBufferedData(t *testing.T) {
+	cli, srv := pair(t, Config{})
+	const streams = 24 // 24 × 4 MiB per-stream windows = 96 MiB > SessionWindow
+	ctx := context.Background()
+	outs := make([]*Stream, streams)
+	for i := range outs {
+		st, err := cli.Open(ctx, "sink", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		outs[i] = st
+	}
+	ins := make([]*Stream, streams)
+	for i := range ins {
+		st, err := srv.Accept(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ins[i] = st
+	}
+
+	data := make([]byte, InitialWindow)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sent := make([]int, streams)
+	total := 0
+	for i, st := range outs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			st.SetWriteDeadline(time.Now().Add(500 * time.Millisecond))
+			n, _ := st.Write(data)
+			mu.Lock()
+			sent[i] = n
+			total += n
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	if total != SessionWindow {
+		t.Fatalf("peer buffered %d bytes before stalling, want %d", total, SessionWindow)
+	}
+
+	// Drain everything; the stalled writers must finish.
+	errs := make(chan error, 2*streams)
+	for i, st := range outs {
+		go func() {
+			st.SetWriteDeadline(time.Time{})
+			_, err := st.Write(data[sent[i]:])
+			if err == nil {
+				err = st.CloseWrite()
+			}
+			errs <- err
+		}()
+	}
+	for _, st := range ins {
+		go func() {
+			b, err := io.ReadAll(st)
+			if err == nil && len(b) != len(data) {
+				err = errors.New("short read")
+			}
+			errs <- err
+		}()
+	}
+	timeout := time.After(10 * time.Second)
+	for range 2 * streams {
+		select {
+		case err := <-errs:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-timeout:
+			t.Fatal("transfer stalled after the peer started reading")
+		}
+	}
+}

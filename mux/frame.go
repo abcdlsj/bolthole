@@ -33,6 +33,9 @@ const (
 	DefaultMaxFrame = 1<<20 + HeaderSize
 	// InitialWindow is the per-direction, per-stream starting credit.
 	InitialWindow = 4 << 20
+	// SessionWindow is the per-direction starting credit shared by all
+	// streams of a session (WINDOW on stream 0 returns it).
+	SessionWindow = 64 << 20
 	// MaxChunk is the largest DATA payload this implementation sends.
 	MaxChunk = 32 * 1024
 )

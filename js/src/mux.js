@@ -4,6 +4,7 @@ import { concat, enc, dec, u32, readU32, deferred } from './bytes.js';
 
 export const T = { OPEN: 1, ACCEPT: 2, DATA: 3, FIN: 4, RESET: 5, WINDOW: 6, PING: 7, PONG: 8, GOAWAY: 9 };
 export const INITIAL_WINDOW = 4 * 1024 * 1024;
+export const SESSION_WINDOW = 64 * 1024 * 1024;
 export const MAX_CHUNK = 32 * 1024;
 export const DEFAULT_MAX_FRAME = (1 << 20) + 5;
 
@@ -54,6 +55,11 @@ export class Session {
     this.lastRecv = Date.now();
     this.lastSend = Date.now();
     this.tail = Promise.resolve();
+    // Session-level flow control (spec §3.4), shared by all streams.
+    this.sendCredit = SESSION_WINDOW;
+    this.recvCredit = SESSION_WINDOW;
+    this.recvUnack = 0;
+    this._wake = deferred();
     this.readLoop();
     if (this.heartbeatMs > 0) {
       this.timer = setInterval(() => this.tick(), this.heartbeatMs / 4);
@@ -136,6 +142,17 @@ export class Session {
     }
   }
 
+  _release(n) {
+    if (n <= 0) return;
+    this.recvUnack += n;
+    if (this.recvUnack >= SESSION_WINDOW / 2) {
+      const credit = this.recvUnack;
+      this.recvUnack = 0;
+      this.recvCredit += credit;
+      this.send(T.WINDOW, 0, u32(credit)).catch(() => {});
+    }
+  }
+
   isPeerId(id) {
     return id !== 0 && (id % 2 === 1) !== this.dialer;
   }
@@ -177,8 +194,22 @@ export class Session {
       case T.FIN:
       case T.RESET:
       case T.WINDOW: {
+        if (f.type === T.WINDOW && f.id === 0) {
+          if (f.payload.length !== 4) throw new Error('bolthole: bad session window');
+          this.sendCredit += readU32(f.payload);
+          if (this.sendCredit > 2 ** 31) throw new Error('bolthole: session window overflow');
+          const w = this._wake;
+          this._wake = deferred();
+          w.resolve();
+          return;
+        }
+        if (f.type === T.DATA) {
+          if (f.payload.length > this.recvCredit) throw new Error('bolthole: session window exceeded');
+          this.recvCredit -= f.payload.length;
+        }
         const st = this.streams.get(f.id);
         if (!st) {
+          if (f.type === T.DATA) this._release(f.payload.length);
           if (f.type === T.ACCEPT || f.type === T.DATA) this.send(T.RESET, f.id, json({ code: 'unknown_stream' })).catch(() => {});
           return;
         }
@@ -203,6 +234,7 @@ export class Stream {
     this.recvFin = false;
     this.recvCredit = INITIAL_WINDOW;
     this.unacked = 0;
+    this.held = 0; // buffered bytes still charged to the session window
     this.sendCredit = INITIAL_WINDOW;
     this.localFin = false;
     this.isAccepted = false;
@@ -243,6 +275,9 @@ export class Stream {
         const chunk = this.buf.shift();
         this.bufLen -= chunk.length;
         this.unacked += chunk.length;
+        const release = Math.min(chunk.length, this.held);
+        this.held -= release;
+        this.session._release(release);
         if (this.unacked >= INITIAL_WINDOW / 2 && !this.recvFin && !this.error) {
           const credit = this.unacked;
           this.unacked = 0;
@@ -275,8 +310,14 @@ export class Stream {
         await this._wake.promise;
         continue;
       }
-      const n = Math.min(data.length - off, MAX_CHUNK, this.sendCredit);
+      const s = this.session;
+      if (s.sendCredit <= 0) {
+        await Promise.race([this._wake.promise, s._wake.promise]);
+        continue;
+      }
+      const n = Math.min(data.length - off, MAX_CHUNK, this.sendCredit, s.sendCredit);
       this.sendCredit -= n;
+      s.sendCredit -= n;
       await this.session.send(T.DATA, this.id, data.subarray(off, off + n));
       off += n;
     }
@@ -308,6 +349,8 @@ export class Stream {
     if (!this.error && !this.finished) this.error = err;
     const was = this.finished;
     this.finished = true;
+    this.session._release(this.held);
+    this.held = 0;
     this._accept.reject(err);
     this._signal();
     if (!was) this._done.resolve();
@@ -336,9 +379,13 @@ export class Stream {
         }
         return;
       case T.DATA:
-        if (this.recvFin || this.error) return;
-        if (f.payload.length > this.recvCredit) return this.reset('flow_control', 'window exceeded');
+        if (this.recvFin || this.error) return this.session._release(f.payload.length);
+        if (f.payload.length > this.recvCredit) {
+          this.session._release(f.payload.length);
+          return this.reset('flow_control', 'window exceeded');
+        }
         this.recvCredit -= f.payload.length;
+        this.held += f.payload.length;
         this.buf.push(f.payload.slice());
         this.bufLen += f.payload.length;
         this._signal();

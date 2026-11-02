@@ -157,7 +157,7 @@ Every frame is one binary transport message:
 | `0x03` | `DATA` | id | bytes |
 | `0x04` | `FIN` | id | empty. Sender will send no more `DATA` on this stream (half close). |
 | `0x05` | `RESET` | id | UTF-8 JSON `{"code":"…","message":"…"}`. Aborts the stream both ways. |
-| `0x06` | `WINDOW` | id | u32 BE: additional bytes the peer may send. |
+| `0x06` | `WINDOW` | id, or 0 | u32 BE: additional bytes the peer may send on this stream, or on the whole session for id 0. |
 | `0x07` | `PING` | 0 | 0–64 opaque bytes. |
 | `0x08` | `PONG` | 0 | the `PING` payload, echoed. |
 | `0x09` | `GOAWAY` | 0 | UTF-8 JSON `{"code":"…","message":"…"}`. No new streams; existing ones may finish. |
@@ -202,6 +202,16 @@ window; a receiver that sees an overrun resets the stream with
 credit with `WINDOW`. The reference implementations return credit once half
 the window has been consumed. Senders should split `DATA` into chunks of at
 most 32 KiB so one busy stream doesn't hold the transport for long.
+
+Each direction of the session as a whole also starts with a window of
+**67108864 bytes** (64 MiB), shared by all its streams, so a peer can't make
+the receiver buffer `max_streams × 4 MiB`. A `DATA` payload counts against
+both its stream's window and the session window; a sender sends only what
+both allow. A receiver that sees the session window overrun closes the
+session. The receiver frees bytes when the application consumes them, and
+also when it discards them (`DATA` for an unknown, reset or finished stream,
+and data still buffered when a stream is reset), and returns session credit
+with `WINDOW` on stream 0, once half the session window is free.
 
 ### 3.5 Reset codes
 
@@ -371,7 +381,7 @@ An implementation is conformant when it:
 
 - [ ] derives `routing_token`, `psk` and `token_hash` exactly as the test vectors say;
 - [ ] encodes and decodes every frame in the test vectors, and ignores an unknown frame type;
-- [ ] never sends beyond a peer's window, and resets a stream that overruns its own;
+- [ ] never sends beyond a peer's stream or session window, resets a stream that overruns its own window, and closes a session that overruns the session window;
 - [ ] answers `PING` and closes a session silent for `3 × heartbeat_ms`;
 - [ ] reproduces `msg1`, `msg2` and the first records in the test vectors byte for byte (given the fixed ephemeral keys);
 - [ ] closes the session on the first record that fails to decrypt.
